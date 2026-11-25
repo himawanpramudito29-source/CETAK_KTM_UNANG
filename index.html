@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generator Kartu Tanda Mahasiswa (KTM)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Plus Jakarta Sans -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- SheetJS (XLSX) untuk membaca dan membuat file Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- MediaPipe Selfie Segmentation (Stabil, Cepat, Tanpa Error Bundler) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        h1, h2, h3, .font-heading {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        /* Pola papan catur untuk menunjukkan area transparan */
+        .checkerboard {
+            background-color: #ffffff;
+            background-image: linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+                              linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+                              linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+                              linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+            background-size: 16px 16px;
+            background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- Header / Navbar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white p-2 rounded-xl shadow-md shadow-blue-600/20">
+                    <i data-lucide="id-card" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold text-slate-900 leading-tight">KTM Studio Pro</h1>
+                    <p class="text-xs text-slate-500 hidden sm:block">Pembuat KTM, Import Excel, Hapus Background AI & Atur Pas Foto</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="resetAll()" class="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg hover:bg-slate-100 transition flex items-center gap-1.5">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Reset</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Notifikasi Toast / Message Box -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            <!-- KOLOM KIRI: Editor Pas Foto, Template & Data Mahasiswa (7 Kolom) -->
+            <div class="lg:col-span-7 space-y-6">
+                
+                <!-- Langkah 1: Upload, Atur Ukuran & Penghapusan Background Pas Foto -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center">1</span>
+                            <h2 class="text-base sm:text-lg font-bold text-slate-900">Pas Foto Mahasiswa (<span id="title-photo-dim">200px × 250px</span>)</h2>
+                        </div>
+                        <!-- Preset Ukuran Cepat -->
+                        <div class="flex items-center gap-1.5">
+                            <button type="button" onclick="applyPhotoPreset(200, 250)" class="text-[11px] font-medium px-2 py-1 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 transition">200×250</button>
+                            <button type="button" onclick="applyPhotoPreset(300, 400)" class="text-[11px] font-medium px-2 py-1 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition">3×4 (300×400)</button>
+                            <button type="button" onclick="applyPhotoPreset(400, 600)" class="text-[11px] font-medium px-2 py-1 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition">4×6 (400×600)</button>
+                        </div>
+                    </div>
+
+                    <!-- Pengaturan Dimensi Output Foto (Lebar & Tinggi px) -->
+                    <div class="mb-5 p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 grid grid-cols-2 sm:grid-cols-3 gap-3 items-end">
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Lebar Output (px)</label>
+                            <input type="number" id="input-photo-w" value="200" min="50" max="1200" onchange="changePhotoDimensions()" class="w-full px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-semibold text-slate-600 mb-1">Tinggi Output (px)</label>
+                            <input type="number" id="input-photo-h" value="250" min="50" max="1500" onchange="changePhotoDimensions()" class="w-full px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                        </div>
+                        <div class="col-span-2 sm:col-span-1">
+                            <button type="button" onclick="changePhotoDimensions()" class="w-full bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium py-1.5 px-3 rounded-lg transition">
+                                Terapkan Ukuran
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-12 gap-6 items-center">
+                        <!-- Area Preview & Crop Pas Foto -->
+                        <div class="sm:col-span-5 flex flex-col items-center">
+                            <div class="relative group flex flex-col items-center">
+                                <div id="photo-canvas-wrapper" style="width: 200px; height: 250px;" class="rounded-xl overflow-hidden shadow-md border-2 border-slate-300 checkerboard relative select-none transition-all duration-200">
+                                    <canvas id="photo-canvas" width="200" height="250" class="w-full h-full cursor-move block"></canvas>
+                                    
+                                    <!-- Overlay Loading AI -->
+                                    <div id="ai-loading" class="hidden absolute inset-0 bg-slate-900/75 backdrop-blur-xs flex flex-col items-center justify-center text-white p-4 text-center z-20">
+                                        <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-blue-400 mb-2"></i>
+                                        <p class="text-xs font-semibold" id="ai-status-text">Menghapus Background...</p>
+                                        <p class="text-[10px] text-slate-300 mt-1">Proses AI berjalan di perangkat Anda</p>
+                                    </div>
+
+                                    <!-- Placeholder Jika Belum Ada Foto -->
+                                    <div id="photo-placeholder" onclick="document.getElementById('file-input').click()" class="absolute inset-0 bg-slate-50/90 hover:bg-slate-100/95 transition cursor-pointer flex flex-col items-center justify-center p-4 text-center">
+                                        <div class="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-2">
+                                            <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+                                        </div>
+                                        <p class="text-xs font-semibold text-slate-700">Klik untuk Unggah Foto</p>
+                                        <p class="text-[10px] text-slate-500 mt-1">JPG, PNG, WEBP</p>
+                                    </div>
+                                </div>
+                                <div class="text-center mt-2">
+                                    <span class="text-[11px] font-medium text-slate-500">Ukuran Output: <b id="label-photo-dim">200px × 250px</b></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Kontrol Foto & Background (7 Kolom) -->
+                        <div class="sm:col-span-7 space-y-4">
+                            <input type="file" id="file-input" accept="image/*" class="hidden" onchange="handleFileUpload(event)">
+                            
+                            <!-- Tombol Import & Hapus Background -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <button type="button" onclick="document.getElementById('file-input').click()" class="w-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold py-2.5 px-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-xs">
+                                    <i data-lucide="image-plus" class="w-4 h-4"></i>
+                                    <span>Import Foto</span>
+                                </button>
+
+                                <button type="button" id="btn-remove-bg" onclick="removeBackgroundAI()" disabled class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-xs font-semibold py-2.5 px-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-xs">
+                                    <i data-lucide="wand-2" class="w-4 h-4"></i>
+                                    <span>Hapus Background</span>
+                                </button>
+                            </div>
+
+                            <!-- Pilihan Warna Background -->
+                            <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-2.5">
+                                <div class="flex items-center justify-between">
+                                    <label class="text-xs font-semibold text-slate-700">Warna Latar Belakang:</label>
+                                    <span id="bg-color-label" class="text-[11px] font-mono text-slate-500 uppercase">#DB1514</span>
+                                </div>
+                                <div class="flex flex-wrap items-center gap-2.5">
+                                    <!-- Merah Formal -->
+                                    <button type="button" onclick="setBgColor('#db1514')" title="Merah Formal" class="w-8 h-8 rounded-lg bg-[#db1514] border-2 border-white ring-2 ring-blue-500 shadow-xs transition transform hover:scale-105 bg-preset" data-color="#db1514"></button>
+                                    <!-- Biru Formal -->
+                                    <button type="button" onclick="setBgColor('#0b4ea2')" title="Biru Formal" class="w-8 h-8 rounded-lg bg-[#0b4ea2] border-2 border-white ring-1 ring-slate-300 shadow-xs transition transform hover:scale-105 bg-preset" data-color="#0b4ea2"></button>
+                                    <!-- Putih -->
+                                    <button type="button" onclick="setBgColor('#ffffff')" title="Putih" class="w-8 h-8 rounded-lg bg-white border-2 border-slate-200 ring-1 ring-slate-300 shadow-xs transition transform hover:scale-105 bg-preset" data-color="#ffffff"></button>
+                                    <!-- Abu-abu Terang -->
+                                    <button type="button" onclick="setBgColor('#e2e8f0')" title="Abu Terang" class="w-8 h-8 rounded-lg bg-[#e2e8f0] border-2 border-white ring-1 ring-slate-300 shadow-xs transition transform hover:scale-105 bg-preset" data-color="#e2e8f0"></button>
+                                    <!-- Transparan -->
+                                    <button type="button" onclick="setBgColor('transparent')" title="Transparan" class="w-8 h-8 rounded-lg checkerboard border-2 border-white ring-1 ring-slate-300 shadow-xs transition transform hover:scale-105 bg-preset" data-color="transparent"></button>
+                                    
+                                    <!-- Custom Color Picker -->
+                                    <div class="relative flex items-center ml-auto">
+                                        <label for="custom-bg-picker" class="flex items-center gap-1.5 text-xs font-medium text-slate-600 bg-white px-2.5 py-1.5 rounded-lg border border-slate-300 cursor-pointer hover:bg-slate-50 transition">
+                                            <i data-lucide="pipette" class="w-3.5 h-3.5 text-blue-600"></i>
+                                            <span>Kustom</span>
+                                        </label>
+                                        <input type="color" id="custom-bg-picker" value="#db1514" oninput="setBgColor(this.value)" class="opacity-0 w-0 h-0 absolute">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Kontrol Zoom & Posisi -->
+                            <div class="space-y-1.5">
+                                <div class="flex items-center justify-between text-xs">
+                                    <span class="font-semibold text-slate-700 flex items-center gap-1">
+                                        <i data-lucide="zoom-in" class="w-3.5 h-3.5 text-slate-500"></i>
+                                        Zoom & Geser Foto (Drag di kotak)
+                                    </span>
+                                    <button type="button" onclick="resetPhotoTransform()" class="text-[11px] text-blue-600 hover:underline font-medium">Reset Posisi</button>
+                                </div>
+                                <input type="range" id="zoom-slider" min="0.2" max="3" step="0.02" value="1" oninput="updateTransform()" class="w-full accent-blue-600 h-1.5 bg-slate-200 rounded-lg cursor-pointer">
+                            </div>
+
+                            <!-- Download Pas Foto Saja -->
+                            <div class="pt-1">
+                                <button type="button" onclick="downloadPassPhoto()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 border border-slate-300/70">
+                                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                    <span id="btn-download-photo-text">Unduh Pas Foto Saja (200 × 250 px)</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Langkah 2: Template Desain KTM & Tata Letak Foto -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold text-sm flex items-center justify-center">2</span>
+                            <h2 class="text-base sm:text-lg font-bold text-slate-900">Template Desain KTM & Posisi Foto</h2>
+                        </div>
+                        <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700">Opsional</span>
+                    </div>
+
+                    <div class="space-y-4">
+                        <!-- Upload Template KTM Kustom -->
+                        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-3.5 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                            <input type="file" id="template-input" accept="image/*" class="hidden" onchange="handleTemplateUpload(event)">
+                            <button type="button" onclick="document.getElementById('template-input').click()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold py-2.5 px-4 rounded-xl transition flex items-center justify-center gap-2 shadow-xs">
+                                <i data-lucide="layout-template" class="w-4 h-4"></i>
+                                <span>Upload Gambar Template KTM</span>
+                            </button>
+                            <div class="flex-1 flex items-center justify-between gap-2 min-w-0">
+                                <span id="template-filename" class="text-xs text-slate-600 truncate">Menggunakan desain bawaan (Default)</span>
+                                <button type="button" id="btn-clear-template" onclick="clearCustomTemplate()" class="hidden text-xs font-semibold text-rose-600 hover:text-rose-700 px-2 py-1 rounded-lg hover:bg-rose-50 transition shrink-0">
+                                    Hapus Template
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Kontrol Posisi & Ukuran Foto di atas Kartu KTM -->
+                        <div class="p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-semibold text-slate-700">Tata Letak Pas Foto pada Kartu KTM:</span>
+                                <button type="button" onclick="resetKTMPhotoLayout()" class="text-[11px] text-blue-600 hover:underline font-medium">Reset Tata Letak</button>
+                            </div>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-[11px] text-slate-600 mb-1">Posisi Kiri (X): <b id="val-ktm-px">48</b>px</label>
+                                    <input type="range" id="ktm-photo-x" min="0" max="750" value="48" oninput="updateKTMPreview()" class="w-full accent-indigo-600 h-1.5 bg-slate-200 rounded-lg cursor-pointer">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-slate-600 mb-1">Posisi Atas (Y): <b id="val-ktm-py">175</b>px</label>
+                                    <input type="range" id="ktm-photo-y" min="0" max="450" value="175" oninput="updateKTMPreview()" class="w-full accent-indigo-600 h-1.5 bg-slate-200 rounded-lg cursor-pointer">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-slate-600 mb-1">Skala di Kartu: <b id="val-ktm-pscale">100</b>%</label>
+                                    <input type="range" id="ktm-photo-scale" min="30" max="200" value="100" oninput="updateKTMPreview()" class="w-full accent-indigo-600 h-1.5 bg-slate-200 rounded-lg cursor-pointer">
+                                </div>
+                            </div>
+
+                            <!-- Opsi Tampilkan / Sembunyikan Teks Overlay pada Template Kustom -->
+                            <div id="custom-template-options" class="hidden pt-2 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+                                <label class="inline-flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="chk-show-text-overlay" checked onchange="updateKTMPreview()" class="rounded text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-xs font-medium text-slate-700">Tampilkan teks data mahasiswa di atas template</span>
+                                </label>
+                                <label class="inline-flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="chk-photo-frame" checked onchange="updateKTMPreview()" class="rounded text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-xs font-medium text-slate-700">Bingkai putih foto</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Langkah 3: Formulir Data Identitas Mahasiswa + Import Excel -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold text-sm flex items-center justify-center">3</span>
+                            <h2 class="text-base sm:text-lg font-bold text-slate-900">Data Identitas Kartu Tanda Mahasiswa</h2>
+                        </div>
+                    </div>
+
+                    <!-- Panel Import Data Mahasiswa dari Excel -->
+                    <div class="mb-5 p-4 bg-emerald-50/70 rounded-xl border border-emerald-200/80 space-y-3">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-2">
+                                <div class="p-1.5 bg-emerald-600 text-white rounded-lg">
+                                    <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-xs font-bold text-emerald-950">Import Data Mahasiswa dari Excel / CSV</h3>
+                                    <p class="text-[11px] text-emerald-700">Isi otomatis data mahasiswa dari file .xlsx, .xls, atau .csv</p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="file" id="excel-input" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleExcelUpload(event)">
+                                <button type="button" onclick="downloadSampleExcel()" class="bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-semibold py-2 px-3 rounded-xl transition flex items-center gap-1.5 shadow-2xs" title="Unduh format Excel contoh">
+                                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                    <span>Template Excel</span>
+                                </button>
+                                <button type="button" onclick="document.getElementById('excel-input').click()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold py-2 px-3.5 rounded-xl transition flex items-center gap-1.5 shadow-xs">
+                                    <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+                                    <span>Upload Excel</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Baris Navigasi Data Mahasiswa (Muncul setelah Excel berhasil diunggah) -->
+                        <div id="excel-navigator" class="hidden pt-3 border-t border-emerald-200/80 space-y-2.5">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-semibold text-emerald-900">Data Terpilih:</span>
+                                    <span id="excel-counter" class="text-xs font-bold px-2 py-0.5 rounded-md bg-emerald-600 text-white">1 / 1</span>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <button type="button" onclick="prevStudent()" id="btn-prev-student" class="p-1.5 rounded-lg bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 disabled:opacity-40 transition" title="Mahasiswa Sebelumnya">
+                                        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                                    </button>
+                                    <select id="student-selector" onchange="selectStudent(this.value)" class="text-xs font-semibold text-slate-800 bg-white border border-emerald-300 rounded-lg px-2.5 py-1.5 max-w-[200px] sm:max-w-[260px] truncate outline-none focus:ring-2 focus:ring-emerald-500">
+                                    </select>
+                                    <button type="button" onclick="nextStudent()" id="btn-next-student" class="p-1.5 rounded-lg bg-white border border-emerald-300 text-emerald-800 hover:bg-emerald-100 disabled:opacity-40 transition" title="Mahasiswa Berikutnya">
+                                        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                                    </button>
+                                    <button type="button" onclick="clearExcelData()" class="text-xs font-semibold text-rose-600 hover:bg-rose-50 px-2 py-1.5 rounded-lg transition ml-1" title="Hapus daftar Excel">
+                                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Universitas / Perguruan Tinggi</label>
+                            <input type="text" id="input-univ" value="UNIVERSITAS TEKNOLOGI NUSANTARA" oninput="updateKTMPreview()" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                        </div>
+
+                        <!-- Upload Logo Universitas -->
+                        <div class="sm:col-span-2 p-3.5 bg-slate-50 rounded-xl border border-slate-200/80 space-y-3">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <label class="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                                    <i data-lucide="shield" class="w-3.5 h-3.5 text-blue-600"></i>
+                                    <span>Logo Universitas / Instansi (Opsional)</span>
+                                </label>
+                                <button type="button" id="btn-clear-logo" onclick="clearUnivLogo()" class="hidden text-xs font-semibold text-rose-600 hover:text-rose-700 px-2 py-0.5 rounded-md hover:bg-rose-50 transition">
+                                    Hapus Logo
+                                </button>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <input type="file" id="logo-input" accept="image/*" class="hidden" onchange="handleLogoUpload(event)">
+                                <div id="logo-preview-box" onclick="document.getElementById('logo-input').click()" class="w-12 h-12 rounded-xl bg-white border border-slate-300 flex items-center justify-center overflow-hidden cursor-pointer hover:border-blue-500 transition shrink-0 shadow-2xs">
+                                    <i data-lucide="image-plus" class="w-5 h-5 text-slate-400" id="logo-placeholder-icon"></i>
+                                    <img id="logo-preview-img" src="" alt="Logo Preview" class="hidden w-full h-full object-contain p-1">
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <button type="button" onclick="document.getElementById('logo-input').click()" class="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-semibold py-2 px-3.5 rounded-xl transition inline-flex items-center gap-1.5 shadow-2xs">
+                                        <i data-lucide="upload" class="w-3.5 h-3.5 text-blue-600"></i>
+                                        <span>Pilih File Logo (PNG/JPG)</span>
+                                    </button>
+                                    <p id="logo-filename" class="text-[11px] text-slate-500 mt-1 truncate">Belum ada logo diunggah (menggunakan ikon default)</p>
+                                </div>
+                            </div>
+                            <!-- Pengaturan Posisi & Ukuran Logo (Muncul setelah logo diunggah) -->
+                            <div id="logo-layout-controls" class="hidden pt-2.5 border-t border-slate-200 grid grid-cols-3 gap-3">
+                                <div>
+                                    <label class="block text-[11px] text-slate-600 mb-1">Posisi X: <b id="val-logo-x">34</b>px</label>
+                                    <input type="range" id="logo-pos-x" min="0" max="800" value="34" oninput="updateKTMPreview()" class="w-full accent-blue-600 h-1.5 bg-slate-200 rounded-lg cursor-pointer">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-slate-600 mb-1">Posisi Y: <b id="val-logo-y">31</b>px</label>
+                                    <input type="range" id="logo-pos-y" min="0" max="500" value="31" oninput="updateKTMPreview()" class="w-full accent-blue-600 h-1.5 bg-slate-200 rounded-lg cursor-pointer">
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] text-slate-600 mb-1">Ukuran: <b id="val-logo-size">68</b>px</label>
+                                    <input type="range" id="logo-size" min="24" max="200" value="68" oninput="updateKTMPreview()" class="w-full accent-blue-600 h-1.5 bg-slate-200 rounded-lg cursor-pointer">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap Mahasiswa</label>
+                            <input type="text" id="input-nama" value="MUHAMMAD RIZKY PRATAMA" oninput="updateKTMPreview()" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">NIM (Nomor Induk Mahasiswa)</label>
+                            <input type="text" id="input-nim" value="202610370311045" oninput="updateKTMPreview()" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition font-mono">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Fakultas</label>
+                            <input type="text" id="input-fakultas" value="FAKULTAS ILMU KOMPUTER" oninput="updateKTMPreview()" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Program Studi</label>
+                            <input type="text" id="input-prodi" value="S1 TEKNIK INFORMATIKA" oninput="updateKTMPreview()" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Berlaku Hingga</label>
+                            <input type="text" id="input-berlaku" value="AGUSTUS 2030" oninput="updateKTMPreview()" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 mb-1">Tema Warna Kartu (Jika Tanpa Template)</label>
+                            <select id="input-theme" onchange="updateKTMPreview()" class="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-white">
+                                <option value="blue">Biru Akademik (Navy & Royal Blue)</option>
+                                <option value="red">Merah Marun & Crimson</option>
+                                <option value="emerald">Hijau Zamrud (Emerald)</option>
+                                <option value="dark">Hitam Elegan & Emas</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KOLOM KANAN: Pratinjau Real-Time Kartu KTM & Export (5 Kolom) -->
+            <div class="lg:col-span-5 lg:sticky lg:top-24 space-y-6">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2.5">
+                            <span class="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 font-bold text-sm flex items-center justify-center">4</span>
+                            <h2 class="text-base sm:text-lg font-bold text-slate-900">Pratinjau Kartu KTM</h2>
+                        </div>
+                        <span id="badge-ktm-dim" class="text-xs text-slate-500 font-medium">856 × 540 px</span>
+                    </div>
+
+                    <!-- Visualisasi Kartu KTM (Render Canvas Resolusi Tinggi) -->
+                    <div class="w-full overflow-hidden rounded-2xl shadow-xl border border-slate-200 bg-slate-100">
+                        <canvas id="ktm-final-canvas" width="856" height="540" class="w-full h-auto block"></canvas>
+                    </div>
+
+                    <p class="text-xs text-slate-500 mt-3 text-center">
+                        Pratinjau otomatis menggunakan pas foto ukuran <b id="preview-note-dim">200px × 250px</b> yang telah Anda atur.
+                    </p>
+
+                    <!-- Tombol Download KTM Lengkap -->
+                    <div class="mt-5 space-y-2.5">
+                        <button type="button" onclick="downloadKTM()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-5 rounded-xl shadow-lg shadow-blue-600/20 transition flex items-center justify-center gap-2">
+                            <i data-lucide="download-cloud" class="w-5 h-5"></i>
+                            <span>Unduh Kartu KTM (PNG Resolusi Tinggi)</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Informasi Fitur -->
+                <div class="bg-blue-50/70 border border-blue-100 rounded-2xl p-4 text-xs text-blue-900 space-y-1.5">
+                    <div class="font-bold flex items-center gap-1.5 text-blue-800">
+                        <i data-lucide="shield-check" class="w-4 h-4"></i>
+                        <span>Privasi Terjamin 100%</span>
+                    </div>
+                    <p class="text-blue-700/90 leading-relaxed">
+                        Semua proses penghapusan background foto, pembacaan file Excel, dan pembuatan kartu dilakukan langsung di browser Anda. Data mahasiswa tidak pernah dikirim ke server eksternal.
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // Inisialisasi ikon Lucide
+        lucide.createIcons();
+
+        // State Aplikasi
+        const state = {
+            originalImage: null,      // Objek Image asli yang diunggah
+            processedImage: null,     // Objek Image setelah background dihapus
+            customTemplate: null,     // Objek Image template KTM yang diunggah
+            univLogo: null,           // Objek Image logo universitas yang diunggah
+            studentList: [],          // Daftar mahasiswa hasil import Excel
+            currentStudentIdx: 0,     // Indeks mahasiswa yang sedang aktif
+            photoW: 200,              // Lebar output pas foto (px)
+            photoH: 250,              // Tinggi output pas foto (px)
+            bgColor: '#db1514',       // Warna background default (Merah formal)
+            scale: 1,                 // Skala zoom foto
+            offsetX: 0,               // Posisi X foto di dalam canvas pas foto
+            offsetY: 0,               // Posisi Y foto di dalam canvas pas foto
+            isDragging: false,
+            dragStartX: 0,
+            dragStartY: 0,
+            isBgRemoved: false
+        };
+
+        const photoCanvas = document.getElementById('photo-canvas');
+        const photoCtx = photoCanvas.getContext('2d');
+        const ktmCanvas = document.getElementById('ktm-final-canvas');
+        const ktmCtx = ktmCanvas.getContext('2d');
+
+        // Fungsi menampilkan notifikasi Toast
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const colors = {
+                info: 'bg-slate-800 text-white',
+                success: 'bg-emerald-600 text-white',
+                error: 'bg-rose-600 text-white',
+                warning: 'bg-amber-600 text-white'
+            };
+
+            toast.className = `${colors[type] || colors.info} px-4 py-3 rounded-xl shadow-lg text-xs sm:text-sm font-medium flex items-center gap-2 transition-all duration-300 transform translate-y-2 opacity-0 pointer-events-auto`;
+            toast.innerHTML = `<span>${message}</span>`;
+            container.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        // ==========================================
+        // FITUR IMPORT DATA MAHASISWA DARI EXCEL
+        // ==========================================
+
+        // Unduh Template Excel Contoh agar pengguna mudah menyesuaikan kolom
+        function downloadSampleExcel() {
+            if (typeof XLSX === 'undefined') {
+                showToast('Library Excel belum siap. Periksa koneksi internet Anda.', 'error');
+                return;
+            }
+
+            const sampleData = [
+                {
+                    "Nama Mahasiswa": "MUHAMMAD RIZKY PRATAMA",
+                    "NIM": "202610370311045",
+                    "Fakultas": "FAKULTAS ILMU KOMPUTER",
+                    "Program Studi": "S1 TEKNIK INFORMATIKA",
+                    "Berlaku Hingga": "AGUSTUS 2030",
+                    "Universitas": "UNIVERSITAS TEKNOLOGI NUSANTARA"
+                },
+                {
+                    "Nama Mahasiswa": "SITI AISYAH PUTRI",
+                    "NIM": "202610370311046",
+                    "Fakultas": "FAKULTAS EKONOMI DAN BISNIS",
+                    "Program Studi": "S1 AKUNTANSI",
+                    "Berlaku Hingga": "AGUSTUS 2030",
+                    "Universitas": "UNIVERSITAS TEKNOLOGI NUSANTARA"
+                },
+                {
+                    "Nama Mahasiswa": "ANDI WIJAYA KUSUMA",
+                    "NIM": "202610370311047",
+                    "Fakultas": "FAKULTAS TEKNIK",
+                    "Program Studi": "S1 TEKNIK SIPIL",
+                    "Berlaku Hingga": "AGUSTUS 2030",
+                    "Universitas": "UNIVERSITAS TEKNOLOGI NUSANTARA"
+                }
+            ];
+
+            const worksheet = XLSX.utils.json_to_sheet(sampleData);
+            // Atur lebar kolom agar rapi saat dibuka di Excel
+            worksheet['!cols'] = [
+                { wch: 28 },
+                { wch: 18 },
+                { wch: 28 },
+                { wch: 25 },
+                { wch: 16 },
+                { wch: 32 }
+            ];
+
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Data_Mahasiswa");
+            XLSX.writeFile(workbook, "Template_Data_KTM_Mahasiswa.xlsx");
+            showToast('Template Excel berhasil diunduh!', 'success');
+        }
+
+        // Helper mencari nilai kolom secara fleksibel (case-insensitive & variasi nama header)
+        function extractRowField(row, possibleKeys) {
+            const rowKeys = Object.keys(row);
+            for (const target of possibleKeys) {
+                const foundKey = rowKeys.find(k => k.trim().toLowerCase() === target.toLowerCase());
+                if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null) {
+                    return String(row[foundKey]).trim();
+                }
+            }
+            return '';
+        }
+
+        // Baca dan Parse File Excel (.xlsx, .xls, .csv)
+        function handleExcelUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (typeof XLSX === 'undefined') {
+                showToast('Library Excel belum termuat. Silakan muat ulang halaman.', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+                    if (!rawRows || rawRows.length === 0) {
+                        showToast('File Excel kosong atau tidak memiliki baris data.', 'warning');
+                        return;
+                    }
+
+                    const parsedStudents = rawRows.map((row) => {
+                        return {
+                            nama: extractRowField(row, ['nama mahasiswa', 'nama lengkap', 'nama', 'name', 'student name']),
+                            nim: extractRowField(row, ['nim', 'nomor induk mahasiswa', 'npm', 'id', 'no induk']),
+                            fakultas: extractRowField(row, ['fakultas', 'faculty']),
+                            prodi: extractRowField(row, ['program studi', 'prodi', 'jurusan', 'major', 'department']),
+                            berlaku: extractRowField(row, ['berlaku hingga', 'masa berlaku', 'berlaku', 'valid thru', 'expired']),
+                            univ: extractRowField(row, ['universitas', 'nama universitas', 'kampus', 'instansi', 'university'])
+                        };
+                    }).filter(item => item.nama || item.nim);
+
+                    if (parsedStudents.length === 0) {
+                        showToast('Kolom data tidak dikenali. Gunakan "Template Excel" sebagai acuan.', 'error');
+                        return;
+                    }
+
+                    state.studentList = parsedStudents;
+                    state.currentStudentIdx = 0;
+
+                    populateStudentSelector();
+                    applyStudentToForm(0);
+
+                    document.getElementById('excel-navigator').classList.remove('hidden');
+                    showToast(`Berhasil mengimpor ${parsedStudents.length} data mahasiswa dari Excel!`, 'success');
+                } catch (err) {
+                    console.error('Excel parse error:', err);
+                    showToast('Gagal membaca file Excel: ' + err.message, 'error');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function populateStudentSelector() {
+            const selector = document.getElementById('student-selector');
+            selector.innerHTML = '';
+            state.studentList.forEach((student, idx) => {
+                const option = document.createElement('option');
+                option.value = idx;
+                const labelNama = student.nama || 'Tanpa Nama';
+                const labelNim = student.nim ? ` (${student.nim})` : '';
+                option.textContent = `${idx + 1}. ${labelNama}${labelNim}`;
+                selector.appendChild(option);
+            });
+        }
+
+        function applyStudentToForm(index) {
+            if (index < 0 || index >= state.studentList.length) return;
+            state.currentStudentIdx = index;
+            const student = state.studentList[index];
+
+            if (student.univ) document.getElementById('input-univ').value = student.univ;
+            if (student.nama) document.getElementById('input-nama').value = student.nama;
+            if (student.nim) document.getElementById('input-nim').value = student.nim;
+            if (student.fakultas) document.getElementById('input-fakultas').value = student.fakultas;
+            if (student.prodi) document.getElementById('input-prodi').value = student.prodi;
+            if (student.berlaku) document.getElementById('input-berlaku').value = student.berlaku;
+
+            document.getElementById('student-selector').value = index;
+            document.getElementById('excel-counter').textContent = `${index + 1} / ${state.studentList.length}`;
+            document.getElementById('btn-prev-student').disabled = (index === 0);
+            document.getElementById('btn-next-student').disabled = (index === state.studentList.length - 1);
+
+            updateKTMPreview();
+        }
+
+        function selectStudent(val) {
+            applyStudentToForm(parseInt(val, 10));
+        }
+
+        function prevStudent() {
+            if (state.currentStudentIdx > 0) {
+                applyStudentToForm(state.currentStudentIdx - 1);
+            }
+        }
+
+        function nextStudent() {
+            if (state.currentStudentIdx < state.studentList.length - 1) {
+                applyStudentToForm(state.currentStudentIdx + 1);
+            }
+        }
+
+        function clearExcelData() {
+            state.studentList = [];
+            state.currentStudentIdx = 0;
+            document.getElementById('excel-input').value = '';
+            document.getElementById('excel-navigator').classList.add('hidden');
+            showToast('Daftar data Excel ditutup.', 'info');
+        }
+
+        // ==========================================
+        // FITUR PAS FOTO & BACKGROUND AI
+        // ==========================================
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                showToast('Harap pilih file gambar yang valid (JPG, PNG, WEBP).', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    state.originalImage = img;
+                    state.processedImage = img;
+                    state.isBgRemoved = false;
+
+                    fitImageToCanvas(img);
+
+                    document.getElementById('photo-placeholder').classList.add('hidden');
+                    document.getElementById('btn-remove-bg').disabled = false;
+
+                    renderPhotoCanvas();
+                    updateKTMPreview();
+                    showToast('Foto berhasil diimport! Klik "Hapus Background" untuk menghilangkan latar.', 'success');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function fitImageToCanvas(img) {
+            const targetW = state.photoW;
+            const targetH = state.photoH;
+            const scaleX = targetW / img.width;
+            const scaleY = targetH / img.height;
+            const scale = Math.max(scaleX, scaleY);
+
+            state.scale = scale;
+            state.offsetX = (targetW - img.width * scale) / 2;
+            state.offsetY = (targetH - img.height * scale) / 2;
+
+            const slider = document.getElementById('zoom-slider');
+            if (scale > parseFloat(slider.max)) slider.max = Math.ceil(scale * 2);
+            if (scale < parseFloat(slider.min)) slider.min = (scale * 0.2).toFixed(2);
+            slider.value = scale.toFixed(2);
+        }
+
+        function resetPhotoTransform() {
+            if (!state.processedImage) return;
+            fitImageToCanvas(state.processedImage);
+            renderPhotoCanvas();
+            updateKTMPreview();
+        }
+
+        function applyPhotoPreset(w, h) {
+            document.getElementById('input-photo-w').value = w;
+            document.getElementById('input-photo-h').value = h;
+            changePhotoDimensions();
+        }
+
+        function changePhotoDimensions() {
+            const w = Math.max(50, Math.min(1200, parseInt(document.getElementById('input-photo-w').value) || 200));
+            const h = Math.max(50, Math.min(1500, parseInt(document.getElementById('input-photo-h').value) || 250));
+
+            document.getElementById('input-photo-w').value = w;
+            document.getElementById('input-photo-h').value = h;
+
+            state.photoW = w;
+            state.photoH = h;
+
+            photoCanvas.width = w;
+            photoCanvas.height = h;
+
+            const maxDisplayW = 220;
+            const maxDisplayH = 260;
+            const ratio = Math.min(maxDisplayW / w, maxDisplayH / h, 1);
+            const displayW = Math.round(w * ratio);
+            const displayH = Math.round(h * ratio);
+
+            const wrapper = document.getElementById('photo-canvas-wrapper');
+            wrapper.style.width = `${displayW}px`;
+            wrapper.style.height = `${displayH}px`;
+
+            const dimText = `${w}px × ${h}px`;
+            document.getElementById('title-photo-dim').textContent = dimText;
+            document.getElementById('label-photo-dim').textContent = dimText;
+            document.getElementById('btn-download-photo-text').textContent = `Unduh Pas Foto Saja (${w} × ${h} px)`;
+            document.getElementById('preview-note-dim').textContent = dimText;
+
+            if (state.processedImage) {
+                fitImageToCanvas(state.processedImage);
+            }
+
+            renderPhotoCanvas();
+            updateKTMPreview();
+            showToast(`Ukuran pas foto diubah menjadi ${w}px × ${h}px`, 'info');
+        }
+
+        let selfieSegmentationInstance = null;
+
+        async function removeBackgroundAI() {
+            if (!state.originalImage) return;
+
+            const loadingOverlay = document.getElementById('ai-loading');
+            const statusText = document.getElementById('ai-status-text');
+            const btnRemove = document.getElementById('btn-remove-bg');
+
+            try {
+                loadingOverlay.classList.remove('hidden');
+                btnRemove.disabled = true;
+                statusText.textContent = 'Memuat Model Segmentasi...';
+
+                if (typeof SelfieSegmentation === 'undefined') {
+                    throw new Error('Library segmentasi belum siap. Periksa koneksi internet Anda.');
+                }
+
+                if (!selfieSegmentationInstance) {
+                    selfieSegmentationInstance = new SelfieSegmentation({
+                        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+                    });
+                    selfieSegmentationInstance.setOptions({
+                        modelSelection: 1,
+                        selfieMode: false
+                    });
+                }
+
+                statusText.textContent = 'Menghapus Background...';
+
+                const resultCanvas = await new Promise((resolve, reject) => {
+                    selfieSegmentationInstance.onResults((results) => {
+                        try {
+                            const outCanvas = document.createElement('canvas');
+                            outCanvas.width = state.originalImage.width;
+                            outCanvas.height = state.originalImage.height;
+                            const outCtx = outCanvas.getContext('2d');
+
+                            outCtx.save();
+                            outCtx.clearRect(0, 0, outCanvas.width, outCanvas.height);
+                            outCtx.drawImage(results.segmentationMask, 0, 0, outCanvas.width, outCanvas.height);
+                            outCtx.globalCompositeOperation = 'source-in';
+                            outCtx.drawImage(results.image, 0, 0, outCanvas.width, outCanvas.height);
+                            outCtx.restore();
+
+                            resolve(outCanvas);
+                        } catch (err) {
+                            reject(err);
+                        }
+                    });
+
+                    selfieSegmentationInstance.send({ image: state.originalImage }).catch(reject);
+                });
+
+                const transparentImg = new Image();
+                transparentImg.onload = function() {
+                    state.processedImage = transparentImg;
+                    state.isBgRemoved = true;
+                    renderPhotoCanvas();
+                    updateKTMPreview();
+                    loadingOverlay.classList.add('hidden');
+                    btnRemove.disabled = false;
+                    showToast('Background berhasil dihapus! Silakan pilih warna latar yang diinginkan.', 'success');
+                };
+                transparentImg.src = resultCanvas.toDataURL('image/png');
+
+            } catch (error) {
+                console.error('Error menghapus background:', error);
+                loadingOverlay.classList.add('hidden');
+                btnRemove.disabled = false;
+                showToast('Gagal menghapus background otomatis: ' + error.message, 'error');
+            }
+        }
+
+        function setBgColor(color) {
+            state.bgColor = color;
+            document.getElementById('bg-color-label').textContent = color === 'transparent' ? 'TRANSPARAN' : color.toUpperCase();
+
+            document.querySelectorAll('.bg-preset').forEach(btn => {
+                if (btn.dataset.color === color) {
+                    btn.classList.remove('ring-1', 'ring-slate-300');
+                    btn.classList.add('ring-2', 'ring-blue-500');
+                } else {
+                    btn.classList.remove('ring-2', 'ring-blue-500');
+                    btn.classList.add('ring-1', 'ring-slate-300');
+                }
+            });
+
+            renderPhotoCanvas();
+            updateKTMPreview();
+        }
+
+        // Upload & Hapus Template Desain KTM Kustom
+        function handleTemplateUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                showToast('Harap pilih file gambar template (PNG, JPG, WEBP).', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    state.customTemplate = img;
+
+                    const targetCanvasW = 856;
+                    const aspectRatio = img.height / img.width;
+                    const targetCanvasH = Math.round(targetCanvasW * aspectRatio);
+
+                    ktmCanvas.width = targetCanvasW;
+                    ktmCanvas.height = targetCanvasH;
+
+                    document.getElementById('ktm-photo-y').max = Math.max(200, targetCanvasH - 50);
+                    document.getElementById('badge-ktm-dim').textContent = `${targetCanvasW} × ${targetCanvasH} px`;
+
+                    document.getElementById('template-filename').textContent = file.name;
+                    document.getElementById('btn-clear-template').classList.remove('hidden');
+                    document.getElementById('custom-template-options').classList.remove('hidden');
+
+                    updateKTMPreview();
+                    showToast('Template KTM berhasil dimuat! Atur posisi foto jika diperlukan.', 'success');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearCustomTemplate() {
+            state.customTemplate = null;
+            document.getElementById('template-input').value = '';
+            document.getElementById('template-filename').textContent = 'Menggunakan desain bawaan (Default)';
+            document.getElementById('btn-clear-template').classList.add('hidden');
+            document.getElementById('custom-template-options').classList.add('hidden');
+
+            ktmCanvas.width = 856;
+            ktmCanvas.height = 540;
+            document.getElementById('badge-ktm-dim').textContent = '856 × 540 px';
+            resetKTMPhotoLayout();
+            showToast('Kembali menggunakan desain template KTM bawaan.', 'info');
+        }
+
+        function resetKTMPhotoLayout() {
+            document.getElementById('ktm-photo-x').value = 48;
+            document.getElementById('ktm-photo-y').value = 175;
+            document.getElementById('ktm-photo-scale').value = 100;
+            updateKTMPreview();
+        }
+
+        // Upload & Hapus Logo Universitas
+        function handleLogoUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                showToast('Harap pilih file gambar logo yang valid (PNG, JPG, WEBP).', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    state.univLogo = img;
+
+                    document.getElementById('logo-placeholder-icon').classList.add('hidden');
+                    const previewImg = document.getElementById('logo-preview-img');
+                    previewImg.src = e.target.result;
+                    previewImg.classList.remove('hidden');
+
+                    document.getElementById('logo-filename').textContent = file.name;
+                    document.getElementById('btn-clear-logo').classList.remove('hidden');
+                    document.getElementById('logo-layout-controls').classList.remove('hidden');
+
+                    document.getElementById('logo-pos-x').value = 34;
+                    document.getElementById('logo-pos-y').value = 31;
+                    document.getElementById('logo-size').value = 68;
+
+                    updateKTMPreview();
+                    showToast('Logo universitas berhasil dipasang pada KTM!', 'success');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearUnivLogo() {
+            state.univLogo = null;
+            document.getElementById('logo-input').value = '';
+            document.getElementById('logo-placeholder-icon').classList.remove('hidden');
+            const previewImg = document.getElementById('logo-preview-img');
+            previewImg.src = '';
+            previewImg.classList.add('hidden');
+
+            document.getElementById('logo-filename').textContent = 'Belum ada logo diunggah (menggunakan ikon default)';
+            document.getElementById('btn-clear-logo').classList.add('hidden');
+            document.getElementById('logo-layout-controls').classList.add('hidden');
+
+            updateKTMPreview();
+            showToast('Logo universitas dihapus.', 'info');
+        }
+
+        // Update Zoom dari Slider
+        function updateTransform() {
+            if (!state.processedImage) return;
+            const newScale = parseFloat(document.getElementById('zoom-slider').value);
+            
+            const centerX = state.photoW / 2;
+            const centerY = state.photoH / 2;
+            const ratio = newScale / state.scale;
+
+            state.offsetX = centerX - (centerX - state.offsetX) * ratio;
+            state.offsetY = centerY - (centerY - state.offsetY) * ratio;
+            state.scale = newScale;
+
+            renderPhotoCanvas();
+            updateKTMPreview();
+        }
+
+        // Event Dragging (Mouse & Touch) untuk menggeser posisi foto pada canvas
+        function startDrag(clientX, clientY) {
+            if (!state.processedImage) return;
+            state.isDragging = true;
+            const rect = photoCanvas.getBoundingClientRect();
+            const scaleFactorX = state.photoW / rect.width;
+            const scaleFactorY = state.photoH / rect.height;
+
+            state.dragStartX = clientX * scaleFactorX - state.offsetX;
+            state.dragStartY = clientY * scaleFactorY - state.offsetY;
+        }
+
+        function doDrag(clientX, clientY) {
+            if (!state.isDragging) return;
+            const rect = photoCanvas.getBoundingClientRect();
+            const scaleFactorX = state.photoW / rect.width;
+            const scaleFactorY = state.photoH / rect.height;
+
+            state.offsetX = clientX * scaleFactorX - state.dragStartX;
+            state.offsetY = clientY * scaleFactorY - state.dragStartY;
+            renderPhotoCanvas();
+            updateKTMPreview();
+        }
+
+        function endDrag() {
+            state.isDragging = false;
+        }
+
+        photoCanvas.addEventListener('mousedown', e => startDrag(e.clientX, e.clientY));
+        window.addEventListener('mousemove', e => doDrag(e.clientX, e.clientY));
+        window.addEventListener('mouseup', endDrag);
+
+        photoCanvas.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                e.preventDefault();
+                startDrag(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+        window.addEventListener('touchmove', e => {
+            if (state.isDragging && e.touches.length === 1) {
+                doDrag(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+        window.addEventListener('touchend', endDrag);
+
+        // Render Pas Foto ke Canvas sesuai ukuran yang diatur
+        function renderPhotoCanvas() {
+            const w = state.photoW;
+            const h = state.photoH;
+            photoCtx.clearRect(0, 0, w, h);
+
+            if (state.bgColor !== 'transparent') {
+                photoCtx.fillStyle = state.bgColor;
+                photoCtx.fillRect(0, 0, w, h);
+            }
+
+            if (state.processedImage) {
+                const drawW = state.processedImage.width * state.scale;
+                const drawH = state.processedImage.height * state.scale;
+                photoCtx.drawImage(state.processedImage, state.offsetX, state.offsetY, drawW, drawH);
+            }
+        }
+
+        // Render Desain Kartu Tanda Mahasiswa (KTM) ke Canvas Utama
+        function updateKTMPreview() {
+            const w = ktmCanvas.width;
+            const h = ktmCanvas.height;
+
+            const univ = document.getElementById('input-univ').value || 'UNIVERSITAS TEKNOLOGI NUSANTARA';
+            const nama = document.getElementById('input-nama').value || 'NAMA MAHASISWA';
+            const nim = document.getElementById('input-nim').value || '0000000000';
+            const fakultas = document.getElementById('input-fakultas').value || 'FAKULTAS';
+            const prodi = document.getElementById('input-prodi').value || 'PROGRAM STUDI';
+            const berlaku = document.getElementById('input-berlaku').value || '2030';
+            const theme = document.getElementById('input-theme').value;
+
+            const photoX = parseInt(document.getElementById('ktm-photo-x').value) || 48;
+            const photoY = parseInt(document.getElementById('ktm-photo-y').value) || 175;
+            const photoScalePct = (parseInt(document.getElementById('ktm-photo-scale').value) || 100) / 100;
+
+            document.getElementById('val-ktm-px').textContent = photoX;
+            document.getElementById('val-ktm-py').textContent = photoY;
+            document.getElementById('val-ktm-pscale').textContent = Math.round(photoScalePct * 100);
+
+            const photoW = Math.round(state.photoW * photoScalePct);
+            const photoH = Math.round(state.photoH * photoScalePct);
+
+            const themes = {
+                blue: { primary: '#0f294a', secondary: '#1d4ed8', accent: '#f59e0b', lightBg: '#f8fafc' },
+                red: { primary: '#7f1d1d', secondary: '#dc2626', accent: '#fbbf24', lightBg: '#fffafa' },
+                emerald: { primary: '#064e3b', secondary: '#059669', accent: '#fbbf24', lightBg: '#f7fdfb' },
+                dark: { primary: '#18181b', secondary: '#3f3f46', accent: '#eab308', lightBg: '#fafafa' }
+            };
+            const t = themes[theme] || themes.blue;
+
+            ktmCtx.clearRect(0, 0, w, h);
+
+            const hasCustomTemplate = Boolean(state.customTemplate);
+            const showTextOverlay = !hasCustomTemplate || document.getElementById('chk-show-text-overlay').checked;
+            const showPhotoFrame = !hasCustomTemplate || document.getElementById('chk-photo-frame').checked;
+
+            if (hasCustomTemplate) {
+                ktmCtx.drawImage(state.customTemplate, 0, 0, w, h);
+            } else {
+                ktmCtx.fillStyle = t.lightBg;
+                ktmCtx.fillRect(0, 0, w, h);
+
+                ktmCtx.fillStyle = t.primary + '08';
+                ktmCtx.beginPath();
+                ktmCtx.arc(w - 100, h - 50, 260, 0, Math.PI * 2);
+                ktmCtx.fill();
+
+                const grad = ktmCtx.createLinearGradient(0, 0, w, 0);
+                grad.addColorStop(0, t.primary);
+                grad.addColorStop(1, t.secondary);
+                ktmCtx.fillStyle = grad;
+                ktmCtx.fillRect(0, 0, w, 130);
+
+                ktmCtx.fillStyle = t.accent;
+                ktmCtx.fillRect(0, 130, w, 8);
+
+                if (!state.univLogo) {
+                    ktmCtx.fillStyle = '#ffffff';
+                    ktmCtx.beginPath();
+                    ktmCtx.arc(68, 65, 34, 0, Math.PI * 2);
+                    ktmCtx.fill();
+
+                    ktmCtx.fillStyle = t.primary;
+                    ktmCtx.font = 'bold 26px "Plus Jakarta Sans", sans-serif';
+                    ktmCtx.textAlign = 'center';
+                    ktmCtx.textBaseline = 'middle';
+                    ktmCtx.fillText('KTM', 68, 66);
+                }
+
+                ktmCtx.textAlign = 'left';
+                ktmCtx.textBaseline = 'alphabetic';
+                ktmCtx.fillStyle = '#ffffff';
+                ktmCtx.font = 'bold 24px "Plus Jakarta Sans", sans-serif';
+                ktmCtx.fillText(univ.toUpperCase(), 120, 52);
+
+                ktmCtx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+                ktmCtx.font = '600 15px "Inter", sans-serif';
+                ktmCtx.fillText('KARTU TANDA MAHASISWA (STUDENT IDENTITY CARD)', 120, 84);
+            }
+
+            if (state.univLogo) {
+                const logoX = parseInt(document.getElementById('logo-pos-x').value) || 34;
+                const logoY = parseInt(document.getElementById('logo-pos-y').value) || 31;
+                const logoMaxSize = parseInt(document.getElementById('logo-size').value) || 68;
+
+                document.getElementById('val-logo-x').textContent = logoX;
+                document.getElementById('val-logo-y').textContent = logoY;
+                document.getElementById('val-logo-size').textContent = logoMaxSize;
+
+                const logoRatio = Math.min(logoMaxSize / state.univLogo.width, logoMaxSize / state.univLogo.height);
+                const drawLogoW = state.univLogo.width * logoRatio;
+                const drawLogoH = state.univLogo.height * logoRatio;
+                const offsetCenterX = (logoMaxSize - drawLogoW) / 2;
+                const offsetCenterY = (logoMaxSize - drawLogoH) / 2;
+
+                ktmCtx.drawImage(state.univLogo, logoX + offsetCenterX, logoY + offsetCenterY, drawLogoW, drawLogoH);
+            }
+
+            if (showPhotoFrame) {
+                ktmCtx.save();
+                ktmCtx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+                ktmCtx.shadowBlur = 15;
+                ktmCtx.shadowOffsetY = 6;
+                ktmCtx.fillStyle = '#ffffff';
+                ktmCtx.fillRect(photoX - 6, photoY - 6, photoW + 12, photoH + 12);
+                ktmCtx.restore();
+            }
+
+            if (state.processedImage) {
+                ktmCtx.drawImage(photoCanvas, photoX, photoY, photoW, photoH);
+            } else {
+                ktmCtx.fillStyle = '#e2e8f0';
+                ktmCtx.fillRect(photoX, photoY, photoW, photoH);
+                ktmCtx.fillStyle = '#64748b';
+                ktmCtx.font = '600 14px "Inter", sans-serif';
+                ktmCtx.textAlign = 'center';
+                ktmCtx.fillText('PAS FOTO', photoX + photoW / 2, photoY + photoH / 2 - 10);
+                ktmCtx.font = '12px "Inter", sans-serif';
+                ktmCtx.fillText(`${state.photoW} × ${state.photoH} px`, photoX + photoW / 2, photoY + photoH / 2 + 12);
+            }
+
+            if (showPhotoFrame) {
+                ktmCtx.strokeStyle = '#cbd5e1';
+                ktmCtx.lineWidth = 2;
+                ktmCtx.strokeRect(photoX, photoY, photoW, photoH);
+            }
+
+            if (showTextOverlay) {
+                const infoX = photoX + photoW + 36;
+                ktmCtx.textAlign = 'left';
+
+                ktmCtx.fillStyle = '#64748b';
+                ktmCtx.font = '600 13px "Inter", sans-serif';
+                ktmCtx.fillText('NAMA MAHASISWA', infoX, photoY + 17);
+
+                ktmCtx.fillStyle = '#0f172a';
+                ktmCtx.font = 'bold 25px "Plus Jakarta Sans", sans-serif';
+                ktmCtx.fillText(nama.toUpperCase(), infoX, photoY + 45);
+
+                ktmCtx.fillStyle = '#64748b';
+                ktmCtx.font = '600 13px "Inter", sans-serif';
+                ktmCtx.fillText('NOMOR INDUK MAHASISWA (NIM)', infoX, photoY + 87);
+
+                ktmCtx.fillStyle = t.secondary;
+                ktmCtx.font = 'bold 22px monospace';
+                ktmCtx.fillText(nim, infoX, photoY + 113);
+
+                ktmCtx.fillStyle = '#64748b';
+                ktmCtx.font = '600 13px "Inter", sans-serif';
+                ktmCtx.fillText('FAKULTAS / PROGRAM STUDI', infoX, photoY + 155);
+
+                ktmCtx.fillStyle = '#1e293b';
+                ktmCtx.font = 'bold 17px "Inter", sans-serif';
+                ktmCtx.fillText(fakultas.toUpperCase(), infoX, photoY + 179);
+                ktmCtx.font = '600 16px "Inter", sans-serif';
+                ktmCtx.fillStyle = '#334155';
+                ktmCtx.fillText(prodi.toUpperCase(), infoX, photoY + 203);
+
+                ktmCtx.fillStyle = '#64748b';
+                ktmCtx.font = '600 12px "Inter", sans-serif';
+                ktmCtx.fillText('BERLAKU HINGGA: ' + berlaku.toUpperCase(), infoX, photoY + 247);
+
+                if (!hasCustomTemplate) {
+                    ktmCtx.fillStyle = t.primary;
+                    ktmCtx.fillRect(0, h - 36, w, 36);
+                    ktmCtx.fillStyle = '#ffffff';
+                    ktmCtx.font = '500 12px "Inter", sans-serif';
+                    ktmCtx.textAlign = 'center';
+                    ktmCtx.fillText('Kartu ini adalah identitas resmi mahasiswa. Apabila menemukan kartu ini harap dikembalikan ke pihak kampus.', w / 2, h - 18);
+
+                    drawBarcode(ktmCtx, nim, w - 210, h - 145, 165, 42);
+                }
+            }
+        }
+
+        function drawBarcode(ctx, text, x, y, width, height) {
+            ctx.fillStyle = '#0f172a';
+            let currentX = x;
+            const seedStr = text || '202610370311';
+            for (let i = 0; i < 42; i++) {
+                const charCode = seedStr.charCodeAt(i % seedStr.length);
+                const barWidth = (charCode % 3) + 1.5;
+                if (i % 2 === 0) {
+                    ctx.fillRect(currentX, y, barWidth, height);
+                }
+                currentX += barWidth + 1.8;
+                if (currentX > x + width) break;
+            }
+        }
+
+        function downloadPassPhoto() {
+            if (!state.processedImage) {
+                showToast('Silakan import foto terlebih dahulu sebelum mengunduh.', 'warning');
+                return;
+            }
+            const link = document.createElement('a');
+            const nim = document.getElementById('input-nim').value || 'mahasiswa';
+            link.download = `PasFoto_${nim}_${state.photoW}x${state.photoH}.png`;
+            link.href = photoCanvas.toDataURL('image/png');
+            link.click();
+            showToast(`Pas foto ukuran ${state.photoW}px × ${state.photoH}px berhasil diunduh!`, 'success');
+        }
+
+        function downloadKTM() {
+            const link = document.createElement('a');
+            const nim = document.getElementById('input-nim').value || 'mahasiswa';
+            const nama = (document.getElementById('input-nama').value || '').trim().replace(/\s+/g, '_');
+            link.download = `KTM_${nim}${nama ? '_' + nama : ''}.png`;
+            link.href = ktmCanvas.toDataURL('image/png');
+            link.click();
+            showToast('Kartu Tanda Mahasiswa (KTM) berhasil diunduh!', 'success');
+        }
+
+        function resetAll() {
+            state.originalImage = null;
+            state.processedImage = null;
+            state.isBgRemoved = false;
+            setBgColor('#db1514');
+            document.getElementById('file-input').value = '';
+            document.getElementById('photo-placeholder').classList.remove('hidden');
+            document.getElementById('btn-remove-bg').disabled = true;
+            applyPhotoPreset(200, 250);
+            clearCustomTemplate();
+            clearUnivLogo();
+            clearExcelData();
+            renderPhotoCanvas();
+            updateKTMPreview();
+            showToast('Aplikasi telah direset ke pengaturan awal.', 'info');
+        }
+
+        window.onload = function() {
+            renderPhotoCanvas();
+            updateKTMPreview();
+        };
+    </script>
+</body>
+</html>
